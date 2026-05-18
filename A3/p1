@@ -1,0 +1,92 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#include <unistd.h>
+
+
+struct msg {
+    long int type;
+    char txt[20];
+};
+//void sanitize_input(char *input) {
+  //  size_t len = strlen(input);
+    //if (input[len - 1] == '\n') {
+      //  input[len - 1] = '\0';  
+    //}
+//}
+void sanitize_input(char *input) {
+    size_t len = strlen(input);
+    if (len > 0 && input[len - 1] == '\n') {
+        input[len - 1] = '\0';  
+    }
+}
+
+
+int main() {
+
+    key_t key = ftok("progfile", 65);
+    int msgid = msgget(key, 0666 | IPC_CREAT);  
+
+    struct msg message;
+    char otp_from_generator[20];
+
+    printf("Please enter the workspace name:\n");
+    fgets(message.txt, sizeof(message.txt), stdin);  
+    sanitize_input(message.txt); 
+    if (strcmp(message.txt, "cse321") != 0) {
+        printf("Invalid workspace name\n");
+        return 0;
+    }
+    message.type = 1;
+    msgsnd(msgid, &message, sizeof(message), 0);
+    printf("Workspace name sent to OTP generator from login: %s\n", message.txt);
+
+    pid_t pid = fork();
+    if (pid == 0) { 
+        msgrcv(msgid, &message, sizeof(message), 1, 0);  
+        printf("OTP generator received workspace name from login: %s\n", message.txt);
+
+        snprintf(message.txt, sizeof(message.txt), "%d", getpid());
+        message.type = 2;
+        msgsnd(msgid, &message, sizeof(message), 0);  
+        printf("OTP sent to login from OTP generator: %s\n", message.txt);
+
+        message.type = 3;
+        msgsnd(msgid, &message, sizeof(message), 0);  
+        printf("OTP sent to mail from OTP generator: %s\n", message.txt);
+
+        exit(0);  
+    }
+
+    if (pid > 0) {  
+        pid_t pid2 = fork();
+        if (pid2 == 0) {  
+            msgrcv(msgid, &message, sizeof(message), 3, 0); 
+            printf("Mail received OTP from OTP generator: %s\n", message.txt);
+
+            message.type = 4;
+            msgsnd(msgid, &message, sizeof(message), 0);  
+            printf("OTP sent to login from mail: %s\n", message.txt);
+
+            exit(0);  
+        }
+        msgrcv(msgid, &message, sizeof(message), 2, 0);  
+        printf("Login received OTP from OTP generator: %s\n", message.txt);
+
+        char generated_otp[20];
+        strcpy(generated_otp, message.txt); 
+        msgrcv(msgid, &message, sizeof(message), 4, 0); 
+        printf("Login received OTP from mail: %s\n", message.txt);
+        if (strcmp(message.txt, generated_otp) == 0) {  
+            printf("OTP Verified\n");
+        } else {
+            printf("OTP Incorrect\n");
+        }
+
+        msgctl(msgid, IPC_RMID, NULL);  
+    }
+
+    return 0;
+}

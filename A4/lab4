@@ -1,0 +1,119 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_USERS 5
+#define MAX_RESOURCES 5
+#define MAX_NAME_LEN 20
+
+typedef enum {
+    READ = 1,
+    WRITE = 2,
+    EXECUTE = 4
+} Permission;
+
+typedef struct {
+    char name[MAX_NAME_LEN];
+} User;
+
+typedef struct {
+    char name[MAX_NAME_LEN];
+} Resource;
+
+typedef struct {
+    char username[MAX_NAME_LEN];
+    int permissions;
+} ACLEntry;
+
+typedef struct {
+    Resource resource;
+    ACLEntry acl[MAX_USERS];
+    int aclCount;
+} ACLControlledResource;
+
+typedef struct {
+    char resourceName[MAX_NAME_LEN];
+    int permissions;
+} Capability;
+
+typedef struct {
+    User user;
+    Capability capabilities[MAX_RESOURCES];
+    int capCount;
+} CapabilityUser;
+
+void printPerms(int perm) {
+    if (perm & READ) printf("Read ");
+    if (perm & WRITE) printf("Write ");
+    if (perm & EXECUTE) printf("Execute ");
+}
+
+int hasPerm(int userPerm, int neededPerm) {
+    return (userPerm & neededPerm) == neededPerm;
+}
+
+void checkACL(ACLControlledResource *res, const char *uname, int perm) {
+    for (int i = 0; i < res->aclCount; i++) {
+        if (strcmp(res->acl[i].username, uname) == 0) {
+            printf("ACL: %s requests ", uname);
+            printPerms(perm);
+            printf("on %s: ", res->resource.name);
+            printf(hasPerm(res->acl[i].permissions, perm) ? "GRANTED\n" : "DENIED\n");
+            return;
+        }
+    }
+    printf("ACL: %s has NO entry for %s: DENIED\n", uname, res->resource.name);
+}
+
+void checkCap(CapabilityUser *u, const char *rname, int perm) {
+    for (int i = 0; i < u->capCount; i++) {
+        if (strcmp(u->capabilities[i].resourceName, rname) == 0) {
+            printf("Cap: %s requests ", u->user.name);
+            printPerms(perm);
+            printf("on %s: ", rname);
+            printf(hasPerm(u->capabilities[i].permissions, perm) ? "GRANTED\n" : "DENIED\n");
+            return;
+        }
+    }
+    printf("Cap: %s has NO cap for %s: DENIED\n", u->user.name, rname);
+}
+
+int main() {
+    User users[MAX_USERS] = {{"Alice"}, {"Bob"}, {"Charlie"}, {"David"}, {"Eve"}};
+    Resource resources[MAX_RESOURCES] = {{"File1"}, {"File2"}, {"File3"}, {"File4"}, {"File5"}};
+
+    ACLControlledResource aclResources[MAX_RESOURCES] = {
+        {resources[0], {{"Alice", READ | WRITE}, {"Bob", READ}}, 2},
+        {resources[1], {{"Alice", READ}, {"Charlie", EXECUTE}}, 2},
+        {resources[2], {{"Bob", READ | EXECUTE}}, 1},
+        {resources[3], {{"David", WRITE | EXECUTE}}, 1},
+        {resources[4], {{"Eve", READ | WRITE | EXECUTE}}, 1}
+    };
+
+    CapabilityUser capUsers[MAX_USERS] = {
+        {"Alice", {{"File1", READ | WRITE}, {"File2", READ}}, 2},
+        {"Bob", {{"File1", READ}, {"File3", READ | EXECUTE}}, 2},
+        {"Charlie", {{"File2", EXECUTE}}, 1},
+        {"David", {{"File4", WRITE}}, 1},
+        {"Eve", {{"File5", READ | WRITE | EXECUTE}}, 1}
+    };
+
+    checkACL(&aclResources[0], "Alice", READ);
+    checkACL(&aclResources[0], "Bob", WRITE);
+    checkACL(&aclResources[0], "Charlie", READ);
+    checkACL(&aclResources[3], "David", WRITE);
+    checkACL(&aclResources[4], "Eve", EXECUTE);
+    checkACL(&aclResources[1], "Eve", READ);
+
+    printf("\n");
+
+    checkCap(&capUsers[0], "File1", WRITE);
+    checkCap(&capUsers[1], "File1", WRITE);
+    checkCap(&capUsers[2], "File2", EXECUTE);
+    checkCap(&capUsers[3], "File4", EXECUTE);
+    checkCap(&capUsers[4], "File5", READ);
+    checkCap(&capUsers[4], "File2", READ);
+
+    return 0;
+}
+
